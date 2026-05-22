@@ -1,16 +1,16 @@
 'use client'
 
-import { useState } from 'react'
 import MapGL, { Marker, NavigationControl } from 'react-map-gl/maplibre'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import type { PlanningApplication, MapViewState } from '@/lib/types'
-import LayerToggle from './LayerToggle'
+import type { LayerEnabled } from '@/lib/layers'
+import LayerApplicator from './LayerApplicator'
 
 const STATUS_COLOURS: Record<string, string> = {
-  approved: '#22c55e',
-  refused:  '#ef4444',
-  pending:  '#f59e0b',
-  withdrawn:'#6b7280',
+  approved:  '#22c55e',
+  refused:   '#ef4444',
+  pending:   '#f59e0b',
+  withdrawn: '#6b7280',
 }
 
 interface MapProps {
@@ -19,9 +19,10 @@ interface MapProps {
   onSelect: (app: PlanningApplication) => void
   viewState: MapViewState
   onViewStateChange: (vs: MapViewState) => void
+  layerEnabled: LayerEnabled
 }
 
-export default function Map({ applications, selected, onSelect, viewState, onViewStateChange }: MapProps) {
+export default function Map({ applications, selected, onSelect, viewState, onViewStateChange, layerEnabled }: MapProps) {
   return (
     <MapGL
       {...viewState}
@@ -30,7 +31,8 @@ export default function Map({ applications, selected, onSelect, viewState, onVie
       mapStyle="https://tiles.openfreemap.org/styles/liberty"
     >
       <NavigationControl position="top-right" />
-      <LayerToggle />
+      <LayerApplicator enabled={layerEnabled} />
+
       {applications.map(app => (
         <Marker
           key={app.id}
