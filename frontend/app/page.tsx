@@ -1,35 +1,135 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import dynamic from 'next/dynamic'
 import Sidebar from '@/components/Sidebar'
-import { geocodePostcode, fetchApplications } from '@/lib/api'
-import type { PlanningApplication, MapViewState } from '@/lib/types'
+import { fetchTile, fetchApplication, fetchCoverage } from '@/lib/api'
+import type { PlanningApplicationSummary, PlanningApplication, MapViewState, MapBounds } from '@/lib/types'
 import { DEFAULT_LAYER_ENABLED, type LayerEnabled } from '@/lib/layers'
 
-const Map = dynamic(() => import('@/components/Map'), { ssr: false })
+const MapView = dynamic(() => import('@/components/Map'), { ssr: false })
 
 const DEFAULT_VIEW: MapViewState = { longitude: -0.1276, latitude: 51.5074, zoom: 12 }
+const MIN_ZOOM       = 10   // below this zoom level, don't attempt to load
+const DEBOUNCE_MS    = 600
+const TILE_DEG       = 0.1  // ~11 km grid; one fetch per cell, cached forever
+const TILE_BATCH     = 6    // concurrent tile fetches per round
+
+function tileKey(latIdx: number, lngIdx: number) {
+  return `${latIdx}:${lngIdx}`
+}
+
+function boundsToTiles(b: MapBounds) {
+  const tiles: { key: string; bounds: MapBounds }[] = []
+  const r0 = Math.floor(b.minLat / TILE_DEG), r1 = Math.floor(b.maxLat / TILE_DEG)
+  const c0 = Math.floor(b.minLng / TILE_DEG), c1 = Math.floor(b.maxLng / TILE_DEG)
+  for (let r = r0; r <= r1; r++) {
+    for (let c = c0; c <= c1; c++) {
+      tiles.push({
+        key: tileKey(r, c),
+        bounds: {
+          minLat: r * TILE_DEG, maxLat: (r + 1) * TILE_DEG,
+          minLng: c * TILE_DEG, maxLng: (c + 1) * TILE_DEG,
+        },
+      })
+    }
+  }
+  return tiles
+}
+
+function cutoffDate(days: number) {
+  const d = new Date()
+  d.setDate(d.getDate() - days)
+  return d.toISOString().split('T')[0]
+}
 
 export default function Home() {
-  const [applications, setApplications]   = useState<PlanningApplication[]>([])
-  const [selected, setSelected]           = useState<PlanningApplication | null>(null)
-  const [viewState, setViewState]         = useState<MapViewState>(DEFAULT_VIEW)
-  const [loading, setLoading]             = useState(false)
-  const [layerEnabled, setLayerEnabled]   = useState<LayerEnabled>(DEFAULT_LAYER_ENABLED)
+  const [rawApplications, setRawApplications] = useState<PlanningApplicationSummary[]>([])
+  const [loading, setLoading]                 = useState(false)
+  const [loadingMore, setLoadingMore]         = useState(false)
+  const [selected, setSelected]               = useState<PlanningApplication | null>(null)
+  const [detailLoading, setDetailLoading]     = useState(false)
+  const [viewState, setViewState]             = useState<MapViewState>(DEFAULT_VIEW)
+  const [layerEnabled, setLayerEnabled]       = useState<LayerEnabled>(DEFAULT_LAYER_ENABLED)
+  const [days, setDays]                       = useState(30)
+  const [heatmapEnabled, setHeatmapEnabled]   = useState(false)
+  const [coverage, setCoverage]               = useState<GeoJSON.FeatureCollection | null>(null)
 
-  const handleSearch = useCallback(async (postcode: string) => {
-    setLoading(true)
+  const applications = useMemo(() => {
+    const cutoff = cutoffDate(days)
+    return rawApplications.filter(a => !a.decidedAt || a.decidedAt >= cutoff)
+  }, [rawApplications, days])
+
+  // Tile cache — loaded tiles stay forever; globalApps accumulates across pans
+  const loadedTiles = useRef(new Set<string>())
+  const globalApps  = useRef(new Map<string, PlanningApplicationSummary>())
+  const fetchingTiles = useRef(new Set<string>()) // in-flight guard
+  const boundsTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const latestBounds = useRef<MapBounds | null>(null)
+
+  useEffect(() => { fetchCoverage().then(setCoverage).catch(() => {}) }, [])
+
+  const loadBounds = useCallback(async (bounds: MapBounds) => {
+    const allTiles  = boundsToTiles(bounds)
+    const newTiles  = allTiles.filter(t =>
+      !loadedTiles.current.has(t.key) && !fetchingTiles.current.has(t.key)
+    )
+    if (newTiles.length === 0) return
+
+    newTiles.forEach(t => fetchingTiles.current.add(t.key))
+
+    const isEmpty = globalApps.current.size === 0
+    if (isEmpty) setLoading(true)
+    else         setLoadingMore(true)
+
+    for (let i = 0; i < newTiles.length; i += TILE_BATCH) {
+      // Stop if a newer bounds is queued (user panned further)
+      if (latestBounds.current !== bounds) break
+
+      const batch = newTiles.slice(i, i + TILE_BATCH)
+      const results = await Promise.allSettled(batch.map(t => fetchTile(t.bounds)))
+
+      for (let j = 0; j < batch.length; j++) {
+        const { key } = batch[j]
+        fetchingTiles.current.delete(key)
+        const result = results[j]
+        if (result.status === 'fulfilled') {
+          loadedTiles.current.add(key)
+          for (const app of result.value) globalApps.current.set(app.id, app)
+        }
+      }
+
+      setRawApplications(Array.from(globalApps.current.values()))
+    }
+
+    setLoading(false)
+    setLoadingMore(false)
+  }, [])
+
+  const handleBoundsChange = useCallback((bounds: MapBounds, zoom: number) => {
+    latestBounds.current = bounds
+    if (zoom < MIN_ZOOM) return
+    if (boundsTimer.current) clearTimeout(boundsTimer.current)
+    boundsTimer.current = setTimeout(() => loadBounds(bounds), DEBOUNCE_MS)
+  }, [loadBounds])
+
+  const handleLocationSelect = useCallback((lat: number, lng: number) => {
+    setViewState({ latitude: lat, longitude: lng, zoom: 14 })
+  }, [])
+
+  const handleViewStateChange = useCallback((vs: MapViewState) => {
+    setViewState(vs)
+  }, [])
+
+  const handleSelect = useCallback(async (summary: PlanningApplicationSummary) => {
+    setDetailLoading(true)
+    setSelected(null)
     try {
-      const { lat, lng } = await geocodePostcode(postcode)
-      setViewState({ latitude: lat, longitude: lng, zoom: 14 })
-      const apps = await fetchApplications(lat, lng)
-      setApplications(apps)
-      setSelected(null)
+      setSelected(await fetchApplication(summary.id))
     } catch {
-      // errors shown inline in Sidebar
+      setSelected({ ...summary, reference: '', address: '', description: '', decidedAt: null, submittedAt: '', applicationType: '' })
     } finally {
-      setLoading(false)
+      setDetailLoading(false)
     }
   }, [])
 
@@ -37,12 +137,15 @@ export default function Home() {
     setLayerEnabled(prev => ({ ...prev, [id]: !prev[id] }))
   }, [])
 
+  const setAllLayers = useCallback((enabled: boolean) => {
+    setLayerEnabled(prev => Object.fromEntries(Object.keys(prev).map(k => [k, enabled])))
+  }, [])
+
   return (
     <div className="flex flex-col h-screen">
 
       {/* Header */}
       <header className="shrink-0 bg-[#1a2e1a] flex items-center justify-center relative" style={{ height: 56 }}>
-        {/* decorative side lines */}
         <div className="absolute inset-x-8 bottom-0 h-px bg-[#c9a84c]/30" />
         <div className="flex flex-col items-center gap-0.5 pb-1">
           <h1
@@ -66,23 +169,34 @@ export default function Home() {
         <aside className="w-72 shrink-0 bg-white border-r border-gray-100 overflow-y-auto">
           <Sidebar
             application={selected}
+            detailLoading={detailLoading}
             count={applications.length}
-            onSearch={handleSearch}
+            rawCount={rawApplications.length}
             loading={loading}
+            loadingMore={loadingMore}
+            onLocationSelect={handleLocationSelect}
             layerEnabled={layerEnabled}
             onToggleLayer={toggleLayer}
+            onSetAllLayers={setAllLayers}
+            days={days}
+            onDaysChange={setDays}
+            heatmapEnabled={heatmapEnabled}
+            onToggleHeatmap={() => setHeatmapEnabled(h => !h)}
           />
         </aside>
 
         {/* Map */}
         <main className="flex-1 relative">
-          <Map
+          <MapView
             applications={applications}
             selected={selected}
-            onSelect={setSelected}
+            onSelect={handleSelect}
             viewState={viewState}
-            onViewStateChange={setViewState}
+            onViewStateChange={handleViewStateChange}
+            onBoundsChange={handleBoundsChange}
             layerEnabled={layerEnabled}
+            heatmapEnabled={heatmapEnabled}
+            coverage={coverage}
           />
         </main>
 

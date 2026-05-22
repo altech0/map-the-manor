@@ -1,21 +1,42 @@
-import type { PlanningApplication } from './types'
+import type { PlanningApplicationSummary, PlanningApplication, MapBounds } from './types'
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8787'
 
-export async function geocodePostcode(postcode: string): Promise<{ lat: number; lng: number }> {
-  const res = await fetch(`${API}/geocode/${encodeURIComponent(postcode)}`)
-  if (!res.ok) throw new Error('Invalid postcode')
+export interface GeoResult { lat: number; lng: number; label: string }
+
+export async function geocodeQuery(q: string): Promise<GeoResult[]> {
+  const res = await fetch(`${API}/geocode?q=${encodeURIComponent(q)}`)
+  if (!res.ok) throw new Error('Geocoding failed')
+  const data = await res.json() as { results: GeoResult[] }
+  return data.results
+}
+
+// Compact wire format: [id, latitude, longitude, status, decidedAt]
+type TileRow = [string, number, number, string, string | null]
+
+export async function fetchTile(bounds: MapBounds): Promise<PlanningApplicationSummary[]> {
+  const params = new URLSearchParams({
+    minLat: String(bounds.minLat), maxLat: String(bounds.maxLat),
+    minLng: String(bounds.minLng), maxLng: String(bounds.maxLng),
+  })
+  const res = await fetch(`${API}/applications?${params}`)
+  if (!res.ok) throw new Error('Failed to fetch tile')
+  const { rows } = await res.json() as { rows: TileRow[] }
+  return rows.map(([id, latitude, longitude, status, decidedAt]) => ({
+    id, latitude, longitude,
+    status: status as PlanningApplicationSummary['status'],
+    decidedAt,
+  }))
+}
+
+export async function fetchCoverage(): Promise<GeoJSON.FeatureCollection> {
+  const res = await fetch(`${API}/coverage`)
+  if (!res.ok) throw new Error('Failed to fetch coverage')
   return res.json()
 }
 
-export async function fetchApplications(
-  lat: number,
-  lng: number,
-  radius = 1000
-): Promise<PlanningApplication[]> {
-  const params = new URLSearchParams({ lat: String(lat), lng: String(lng), radius: String(radius) })
-  const res = await fetch(`${API}/applications?${params}`)
-  if (!res.ok) throw new Error('Failed to fetch applications')
-  const data = await res.json() as { applications: PlanningApplication[] }
-  return data.applications
+export async function fetchApplication(id: string): Promise<PlanningApplication> {
+  const res = await fetch(`${API}/applications/${encodeURIComponent(id)}`)
+  if (!res.ok) throw new Error('Failed to fetch application')
+  return res.json()
 }

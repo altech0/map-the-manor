@@ -5,3 +5,11 @@ compatibility_flags = ["nodejs_compat"]
 
 [dev]
 port = 8787
+
+[[d1_databases]]
+binding = "DB"
+database_name = "map-the-manor-db"
+database_id = "6e25dd35-6bfc-4f99-9151-307a06f5238b"
+
+[triggers]
+crons = ["0 3 * * *"]
