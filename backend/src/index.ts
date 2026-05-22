@@ -83,13 +83,14 @@ app.get('/applications', async c => {
      ORDER BY decided_at DESC NULLS LAST`
   ).bind(minLat, maxLat, minLng, maxLng).all<DbRow>()
 
-  // Compact wire format: [id, lat, lng, status, decidedAt]
+  // Compact wire format: [id, lat, lng, status, decidedAt, submittedAt]
   const rows = results.map(r => [
     r.id,
     Math.round(r.latitude  * 1e5) / 1e5,
     Math.round(r.longitude * 1e5) / 1e5,
     r.status,
     r.decided_at,
+    r.submitted_at,
   ])
 
   return c.json({ rows })

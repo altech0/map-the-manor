@@ -57,7 +57,10 @@ export default function Home() {
 
   const applications = useMemo(() => {
     const cutoff = cutoffDate(days)
-    return rawApplications.filter(a => !a.decidedAt || a.decidedAt >= cutoff)
+    return rawApplications.filter(a => {
+      const date = a.decidedAt ?? a.submittedAt
+      return !date || date >= cutoff
+    })
   }, [rawApplications, days])
 
   // Tile cache — loaded tiles stay forever; globalApps accumulates across pans
@@ -127,7 +130,7 @@ export default function Home() {
     try {
       setSelected(await fetchApplication(summary.id))
     } catch {
-      setSelected({ ...summary, reference: '', address: '', description: '', decidedAt: null, submittedAt: '', applicationType: '' })
+      setSelected({ ...summary, reference: '', address: '', description: '', submittedAt: '', applicationType: '' })
     } finally {
       setDetailLoading(false)
     }

@@ -11,8 +11,8 @@ export async function geocodeQuery(q: string): Promise<GeoResult[]> {
   return data.results
 }
 
-// Compact wire format: [id, latitude, longitude, status, decidedAt]
-type TileRow = [string, number, number, string, string | null]
+// Compact wire format: [id, latitude, longitude, status, decidedAt, submittedAt]
+type TileRow = [string, number, number, string, string | null, string | null]
 
 export async function fetchTile(bounds: MapBounds): Promise<PlanningApplicationSummary[]> {
   const params = new URLSearchParams({
@@ -22,10 +22,11 @@ export async function fetchTile(bounds: MapBounds): Promise<PlanningApplicationS
   const res = await fetch(`${API}/applications?${params}`)
   if (!res.ok) throw new Error('Failed to fetch tile')
   const { rows } = await res.json() as { rows: TileRow[] }
-  return rows.map(([id, latitude, longitude, status, decidedAt]) => ({
+  return rows.map(([id, latitude, longitude, status, decidedAt, submittedAt]) => ({
     id, latitude, longitude,
     status: status as PlanningApplicationSummary['status'],
     decidedAt,
+    submittedAt,
   }))
 }
 

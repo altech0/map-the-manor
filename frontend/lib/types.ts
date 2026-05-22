@@ -2,6 +2,7 @@ export interface PlanningApplicationSummary {
   id: string
   status: 'approved' | 'refused' | 'pending' | 'withdrawn'
   decidedAt: string | null
+  submittedAt: string | null
   latitude: number
   longitude: number
 }
