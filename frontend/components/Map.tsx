@@ -4,6 +4,7 @@ import { useState } from 'react'
 import MapGL, { Marker, NavigationControl } from 'react-map-gl/maplibre'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import type { PlanningApplication, MapViewState } from '@/lib/types'
+import LayerToggle from './LayerToggle'
 
 const STATUS_COLOURS: Record<string, string> = {
   approved: '#22c55e',
@@ -29,6 +30,7 @@ export default function Map({ applications, selected, onSelect, viewState, onVie
       mapStyle="https://tiles.openfreemap.org/styles/liberty"
     >
       <NavigationControl position="top-right" />
+      <LayerToggle />
       {applications.map(app => (
         <Marker
           key={app.id}
