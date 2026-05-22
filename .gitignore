@@ -1,0 +1,22 @@
+context/
+
+# deps
+node_modules/
+frontend/node_modules/
+backend/node_modules/
+
+# Next.js
+frontend/.next/
+frontend/out/
+
+# env
+.env
+.env.local
+frontend/.env.local
+
+# wrangler
+backend/.wrangler/
+
+# misc
+.DS_Store
+*.log

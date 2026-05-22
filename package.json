@@ -1,0 +1,24 @@
+{
+  "name": "map-the-manor",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "concurrently -n frontend,backend -c cyan,magenta \"npm run dev --prefix frontend\" \"npm run dev --prefix backend\""
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/altech0/map-the-manor.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/altech0/map-the-manor/issues"
+  },
+  "homepage": "https://github.com/altech0/map-the-manor#readme",
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
