@@ -1,4 +1,4 @@
-import type { PlanningApplicationSummary, PlanningApplication, MapBounds } from './types'
+import type { CouncilSummary, PlanningApplicationSummary, PlanningApplication, MapBounds } from './types'
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8787'
 
@@ -11,8 +11,8 @@ export async function geocodeQuery(q: string): Promise<GeoResult[]> {
   return data.results
 }
 
-// Compact wire format: [id, latitude, longitude, status, decidedAt, submittedAt]
-type TileRow = [string, number, number, string, string | null, string | null]
+// Compact wire format: [id, latitude, longitude, status, decidedAt, submittedAt, fkCouncilId]
+type TileRow = [string, number, number, string, string | null, string | null, string | null]
 
 export async function fetchTile(bounds: MapBounds): Promise<PlanningApplicationSummary[]> {
   const params = new URLSearchParams({
@@ -22,12 +22,20 @@ export async function fetchTile(bounds: MapBounds): Promise<PlanningApplicationS
   const res = await fetch(`${API}/applications?${params}`)
   if (!res.ok) throw new Error('Failed to fetch tile')
   const { rows } = await res.json() as { rows: TileRow[] }
-  return rows.map(([id, latitude, longitude, status, decidedAt, submittedAt]) => ({
+  return rows.map(([id, latitude, longitude, status, decidedAt, submittedAt, fkCouncilId]) => ({
     id, latitude, longitude,
     status: status as PlanningApplicationSummary['status'],
     decidedAt,
     submittedAt,
+    fkCouncilId,
   }))
+}
+
+export async function fetchCouncils(): Promise<CouncilSummary[]> {
+  const res = await fetch(`${API}/councils`)
+  if (!res.ok) throw new Error('Failed to fetch councils')
+  const { councils } = await res.json() as { councils: CouncilSummary[] }
+  return councils
 }
 
 export async function fetchCoverage(): Promise<GeoJSON.FeatureCollection> {

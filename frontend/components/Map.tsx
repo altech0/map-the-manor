@@ -11,6 +11,7 @@ import ClusterLayer from './ClusterLayer'
 
 interface MapProps {
   applications: PlanningApplicationSummary[]
+  heatmapApplications: PlanningApplicationSummary[]
   selected: PlanningApplication | null
   onSelect: (app: PlanningApplicationSummary) => void
   viewState: MapViewState
@@ -30,7 +31,7 @@ function emitBounds(
   cb({ minLat: b.getSouth(), maxLat: b.getNorth(), minLng: b.getWest(), maxLng: b.getEast() }, zoom)
 }
 
-export default function Map({ applications, selected, onSelect, viewState, onViewStateChange, onBoundsChange, layerEnabled, heatmapEnabled, coverage }: MapProps) {
+export default function Map({ applications, heatmapApplications, selected, onSelect, viewState, onViewStateChange, onBoundsChange, layerEnabled, heatmapEnabled, coverage }: MapProps) {
   return (
     <MapGL
       {...viewState}
@@ -42,11 +43,12 @@ export default function Map({ applications, selected, onSelect, viewState, onVie
       <NavigationControl position="top-right" />
       <CoverageLayer coverage={coverage} />
       <LayerApplicator enabled={layerEnabled} />
-      <HeatmapLayer applications={applications} enabled={heatmapEnabled} />
+      <HeatmapLayer applications={heatmapApplications} enabled={heatmapEnabled} />
       <ClusterLayer
         applications={applications}
         onSelect={onSelect}
         selectedId={selected?.id ?? null}
+        visible={!heatmapEnabled}
       />
     </MapGL>
   )

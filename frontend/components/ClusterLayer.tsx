@@ -9,6 +9,7 @@ interface Props {
   applications: PlanningApplicationSummary[]
   onSelect: (app: PlanningApplicationSummary) => void
   selectedId: string | null
+  visible?: boolean
 }
 
 const STATUS_COLOURS: Record<string, string> = {
@@ -33,16 +34,18 @@ function toGeoJSON(apps: PlanningApplicationSummary[]): GeoJSON.FeatureCollectio
   }
 }
 
-export default function ClusterLayer({ applications, onSelect, selectedId }: Props) {
+export default function ClusterLayer({ applications, onSelect, selectedId, visible = true }: Props) {
   const { current: mapRef } = useMap()
   const map = mapRef?.getMap() as maplibregl.Map | undefined
   const ready       = useRef(false)
   const appsRef     = useRef(applications)
   const onSelectRef = useRef(onSelect)
   const selectedRef = useRef(selectedId)
+  const visibleRef  = useRef(visible)
   appsRef.current     = applications
   onSelectRef.current = onSelect
   selectedRef.current = selectedId
+  visibleRef.current  = visible
 
   useEffect(() => {
     if (!map) return
@@ -135,7 +138,7 @@ export default function ClusterLayer({ applications, onSelect, selectedId }: Pro
         else onSelectRef.current({
           id: props.id,
           status: props.status as PlanningApplicationSummary['status'],
-          decidedAt: null, submittedAt: null, latitude: lat, longitude: lng,
+          decidedAt: null, submittedAt: null, fkCouncilId: null, latitude: lat, longitude: lng,
         })
       })
 
@@ -143,6 +146,11 @@ export default function ClusterLayer({ applications, onSelect, selectedId }: Pro
       map.on('mouseleave', 'clusters', () => { map.getCanvas().style.cursor = '' })
       map.on('mouseenter', 'pins',     () => { map.getCanvas().style.cursor = 'pointer' })
       map.on('mouseleave', 'pins',     () => { map.getCanvas().style.cursor = '' })
+
+      const vis = visibleRef.current ? 'visible' : 'none'
+      for (const id of ['clusters', 'cluster-count', 'pins']) {
+        if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis)
+      }
 
       ready.current = true
     }
@@ -178,6 +186,15 @@ export default function ClusterLayer({ applications, onSelect, selectedId }: Pro
       ])
     }
   }, [map, selectedId])
+
+  // Show/hide all cluster layers
+  useEffect(() => {
+    if (!map || !ready.current) return
+    const vis = visible ? 'visible' : 'none'
+    for (const id of ['clusters', 'cluster-count', 'pins']) {
+      if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis)
+    }
+  }, [map, visible])
 
   return null
 }

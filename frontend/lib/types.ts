@@ -1,8 +1,16 @@
+export interface CouncilSummary {
+  pk_council_id: string
+  entity_id: string
+  name: string
+  reference: string
+}
+
 export interface PlanningApplicationSummary {
   id: string
   status: 'approved' | 'refused' | 'pending' | 'withdrawn'
   decidedAt: string | null
   submittedAt: string | null
+  fkCouncilId: string | null
   latitude: number
   longitude: number
 }

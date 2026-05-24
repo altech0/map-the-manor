@@ -15,3 +15,4 @@ CREATE TABLE IF NOT EXISTS applications (
 CREATE INDEX IF NOT EXISTS idx_bbox     ON applications (latitude, longitude);
 CREATE INDEX IF NOT EXISTS idx_date     ON applications (decided_at);
 CREATE INDEX IF NOT EXISTS idx_status   ON applications (status);
+

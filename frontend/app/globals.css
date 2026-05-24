@@ -9,3 +9,13 @@ body {
   background: #ffffff;
   color: #1a1a1a;
 }
+
+@keyframes hm-exit {
+  from { transform: translateY(0);     opacity: 1; }
+  to   { transform: translateY(-120%); opacity: 0; }
+}
+
+@keyframes hm-enter {
+  from { transform: translateY(120%);  opacity: 0.4; }
+  to   { transform: translateY(0);     opacity: 1; }
+}

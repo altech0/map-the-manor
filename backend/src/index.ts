@@ -49,9 +49,11 @@ interface RawEntity {
   'entry-date'?: string
   point?: string
   'planning-application-type'?: string
+  'organisation-entity'?: string
 }
 
 interface DbRow {
+  pk_application_id: number
   id: string
   reference: string | null
   address: string | null
@@ -60,6 +62,7 @@ interface DbRow {
   decided_at: string | null
   submitted_at: string | null
   application_type: string | null
+  fk_council_id: number | null
   latitude: number
   longitude: number
 }
@@ -76,14 +79,14 @@ app.get('/applications', async c => {
     return c.json({ error: 'minLat, maxLat, minLng, maxLng are required' }, 400)
 
   const { results } = await c.env.DB.prepare(
-    `SELECT id, status, decided_at, latitude, longitude
+    `SELECT id, status, decided_at, submitted_at, fk_council_id, latitude, longitude
      FROM applications
      WHERE latitude  BETWEEN ? AND ?
        AND longitude BETWEEN ? AND ?
      ORDER BY decided_at DESC NULLS LAST`
   ).bind(minLat, maxLat, minLng, maxLng).all<DbRow>()
 
-  // Compact wire format: [id, lat, lng, status, decidedAt, submittedAt]
+  // Compact wire format: [id, lat, lng, status, decidedAt, submittedAt, fkCouncilId]
   const rows = results.map(r => [
     r.id,
     Math.round(r.latitude  * 1e5) / 1e5,
@@ -91,6 +94,7 @@ app.get('/applications', async c => {
     r.status,
     r.decided_at,
     r.submitted_at,
+    r.fk_council_id,
   ])
 
   return c.json({ rows })
@@ -119,6 +123,15 @@ app.get('/applications/:id', async c => {
     latitude:        r.latitude,
     longitude:       r.longitude,
   })
+})
+
+// ─── Councils ────────────────────────────────────────────────────────────────
+
+app.get('/councils', async c => {
+  const { results } = await c.env.DB.prepare(
+    `SELECT pk_council_id, entity_id, name, reference FROM councils ORDER BY name`
+  ).all<{ pk_council_id: string; entity_id: string; name: string; reference: string }>()
+  return c.json({ councils: results })
 })
 
 // ─── Coverage areas ───────────────────────────────────────────────────────────
@@ -170,18 +183,10 @@ app.get('/geocode', async c => {
 
 // ─── Sync (scheduled + manual) ───────────────────────────────────────────────
 
-const UPSTREAM   = 'https://www.planning.data.gov.uk/entity.json'
-const SYNC_FIELDS = [
-  'entity', 'reference', 'address-text', 'description',
-  'planning-decision-type', 'planning-application-status',
-  'decision-date', 'start-date', 'entry-date',
-  'point', 'planning-application-type',
-]
+const UPSTREAM = 'https://www.planning.data.gov.uk/entity.json'
 
 function buildUpstreamParams(offset: number): URLSearchParams {
-  const p = new URLSearchParams({ dataset: 'planning-application', limit: '500', offset: String(offset) })
-  SYNC_FIELDS.forEach(f => p.append('field', f))
-  return p
+  return new URLSearchParams({ dataset: 'planning-application', limit: '500', offset: String(offset) })
 }
 
 async function syncAll(db: D1Database): Promise<{ inserted: number; skipped: number }> {
@@ -216,9 +221,19 @@ async function syncAll(db: D1Database): Promise<{ inserted: number; skipped: num
 
       stmts.push(
         db.prepare(
-          `INSERT OR REPLACE INTO applications
-           (id,reference,address,description,status,decided_at,submitted_at,application_type,latitude,longitude,synced_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,datetime('now'))`
+          `INSERT INTO applications
+           (pk_application_id,id,reference,address,description,status,decided_at,submitted_at,
+            application_type,organisation_entity,decision_type,raw_status,fk_council_id,latitude,longitude,synced_at)
+           VALUES (lower(hex(randomblob(16))),?,?,?,?,?,?,?,?,?,?,?,
+             (SELECT pk_council_id FROM councils WHERE entity_id = ?),
+             ?,?,datetime('now'))
+           ON CONFLICT(id) DO UPDATE SET
+             reference=excluded.reference, address=excluded.address, description=excluded.description,
+             status=excluded.status, decided_at=excluded.decided_at, submitted_at=excluded.submitted_at,
+             application_type=excluded.application_type, organisation_entity=excluded.organisation_entity,
+             decision_type=excluded.decision_type, raw_status=excluded.raw_status,
+             fk_council_id=excluded.fk_council_id, latitude=excluded.latitude, longitude=excluded.longitude,
+             synced_at=datetime('now')`
         ).bind(
           String(e.entity),
           e.reference ?? null,
@@ -228,6 +243,10 @@ async function syncAll(db: D1Database): Promise<{ inserted: number; skipped: num
           e['decision-date'] || null,
           e['start-date'] || e['entry-date'] || null,
           e['planning-application-type'] ?? null,
+          e['organisation-entity'] || null,
+          e['planning-decision-type'] || null,
+          e['planning-application-status'] || null,
+          e['organisation-entity'] || null,
           pt.lat,
           pt.lng,
         )

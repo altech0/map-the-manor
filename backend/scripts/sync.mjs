@@ -19,21 +19,8 @@ const BATCH     = 10   // concurrent page fetches
 const DB_NAME   = 'map-the-manor-db'
 const remote    = process.argv.includes('--remote')
 
-const FIELDS = [
-  'entity', 'reference', 'address-text', 'description',
-  'planning-decision-type', 'planning-application-status',
-  'decision-date', 'start-date', 'entry-date',
-  'point', 'planning-application-type',
-]
-
 function buildUrl(offset) {
-  const p = new URLSearchParams({
-    dataset: 'planning-application',
-    limit:   String(PAGE_SIZE),
-    offset:  String(offset),
-  })
-  FIELDS.forEach(f => p.append('field', f))
-  return `${UPSTREAM}?${p}`
+  return `${UPSTREAM}?${new URLSearchParams({ dataset: 'planning-application', limit: String(PAGE_SIZE), offset: String(offset) })}`
 }
 
 function parseWktPoint(wkt) {
@@ -88,28 +75,40 @@ async function main() {
     const pt = parseWktPoint(e.point)
     if (!pt) continue
     rows.push({
-      id:               String(e.entity),
-      reference:        e.reference ?? null,
-      address:          e['address-text'] ?? null,
-      description:      e.description ?? null,
-      status:           toStatus(e['planning-decision-type'], e['planning-application-status']),
-      decided_at:       e['decision-date'] || null,
-      submitted_at:     e['start-date'] || e['entry-date'] || null,
-      application_type: e['planning-application-type'] ?? null,
-      latitude:         pt.lat,
-      longitude:        pt.lng,
+      id:                  String(e.entity),
+      reference:           e.reference || null,
+      address:             e['address-text'] || null,
+      description:         e.description || null,
+      status:              toStatus(e['planning-decision-type'], e['planning-application-status']),
+      decided_at:          e['decision-date'] || null,
+      submitted_at:        e['start-date'] || e['entry-date'] || null,
+      application_type:    e['planning-application-type'] || null,
+      organisation_entity: e['organisation-entity'] || null,
+      decision_type:       e['planning-decision-type'] || null,
+      raw_status:          e['planning-application-status'] || null,
+      latitude:            pt.lat,
+      longitude:           pt.lng,
     })
   }
   console.log(`${rows.length.toLocaleString()} rows with valid coordinates`)
 
   // One INSERT per row — wrangler handles large files fine, just not large statements
   const sqlFile = join(tmpdir(), `mtm-seed-${Date.now()}.sql`)
-  const cols = '(id,reference,address,description,status,decided_at,submitted_at,application_type,latitude,longitude,synced_at)'
+  const cols = '(pk_application_id,id,reference,address,description,status,decided_at,submitted_at,application_type,organisation_entity,decision_type,raw_status,fk_council_id,latitude,longitude,synced_at)'
   const lines = rows.map(r =>
-    `INSERT OR REPLACE INTO applications ${cols} VALUES ` +
-    `(${escape(r.id)},${escape(r.reference)},${escape(r.address)},${escape(r.description)},` +
+    `INSERT INTO applications ${cols} VALUES ` +
+    `(lower(hex(randomblob(16))),${escape(r.id)},${escape(r.reference)},${escape(r.address)},${escape(r.description)},` +
     `${escape(r.status)},${escape(r.decided_at)},${escape(r.submitted_at)},` +
-    `${escape(r.application_type)},${r.latitude},${r.longitude},datetime('now'));`
+    `${escape(r.application_type)},${escape(r.organisation_entity)},${escape(r.decision_type)},` +
+    `${escape(r.raw_status)},(SELECT pk_council_id FROM councils WHERE entity_id=${escape(r.organisation_entity)}),` +
+    `${r.latitude},${r.longitude},datetime('now')) ` +
+    `ON CONFLICT(id) DO UPDATE SET ` +
+    `reference=excluded.reference,address=excluded.address,description=excluded.description,` +
+    `status=excluded.status,decided_at=excluded.decided_at,submitted_at=excluded.submitted_at,` +
+    `application_type=excluded.application_type,organisation_entity=excluded.organisation_entity,` +
+    `decision_type=excluded.decision_type,raw_status=excluded.raw_status,` +
+    `fk_council_id=excluded.fk_council_id,latitude=excluded.latitude,longitude=excluded.longitude,` +
+    `synced_at=datetime('now');`
   )
   writeFileSync(sqlFile, lines.join('\n'))
   console.log(`SQL written to ${sqlFile}`)

@@ -19,5 +19,5 @@ export const LAYER_GROUPS: LayerGroup[] = [
 export type LayerEnabled = Record<string, boolean>
 
 export const DEFAULT_LAYER_ENABLED: LayerEnabled = Object.fromEntries(
-  LAYER_GROUPS.map(g => [g.id, true])
+  LAYER_GROUPS.map(g => [g.id, false])
 )
