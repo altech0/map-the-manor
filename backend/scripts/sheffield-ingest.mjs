@@ -360,29 +360,23 @@ async function main() {
   let session = await initSession()
   console.log('Session ready')
 
-  let total = 0
-  let monthsProcessed = 0
+  const STOP_YEAR = 2024, STOP_MONTH = 1 // go back to Jan 2024
 
-  while (true) {
+  let total = 0
+
+  while (!(year === STOP_YEAR && month < STOP_MONTH)) {
     const { count, session: updatedSession } = await fetchMonth(session, year, month)
     session = updatedSession
     total += count
-    monthsProcessed++
-
     console.log(`\nTotal committed so far: ${total}`)
 
-    const ans = await prompt('Continue to previous month? (y/n): ')
-    if (ans.toLowerCase() !== 'y') break
+    if (year === STOP_YEAR && month === STOP_MONTH) break
 
-    // Go back one month
     month--
     if (month === 0) { month = 12; year-- }
 
-    // Refresh session every 10 months to avoid expiry
-    if (monthsProcessed % 10 === 0) {
-      console.log('Refreshing Idox session…')
-      session = await initSession()
-    }
+    console.log('Refreshing session for next month…')
+    session = await initSession()
   }
 
   console.log(`\nDone. ${total} total records committed.`)
