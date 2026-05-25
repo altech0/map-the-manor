@@ -1,6 +1,6 @@
 import type { CouncilSummary, PlanningApplicationSummary, PlanningApplication, MapBounds } from './types'
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8787'
+const API = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.mapthemanor.knittedmice.com'
 
 export interface GeoResult { lat: number; lng: number; label: string }
 
